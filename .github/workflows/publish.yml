@@ -1,0 +1,79 @@
+name: Build and Publish IPython
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    name: Build and Publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ipython
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.14"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+
+      - name: Build distribution
+        run: python -m build
+
+      - name: Verify built version matches tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Tag name: $TAG_NAME"
+
+          # Check dist folder filenames
+          echo "Built distribution files:"
+          ls -la dist/
+
+          # Install the built wheel
+          python -m pip install dist/*.whl
+
+          # Get IPython version
+          IPYTHON_VERSION=$(ipython --version)
+          echo "Installed IPython version: $IPYTHON_VERSION"
+
+          # Compare versions (allow only X.Y.Z)
+          if [[ "$TAG_NAME" != "$IPYTHON_VERSION" ]]; then
+            echo "Error: Tag ($TAG_NAME) does not match built IPython version ($IPYTHON_VERSION)"
+            exit 1
+          fi
+
+          echo "Version check passed! Tag matches built version."
+
+      - name: Publish distribution to PyPI
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+      - name: Send Zulip notification
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: zulip/github-actions-zulip/send-message@f675f2b4eb2a95fae974215476dcb7ad8dfeff6b # v2.0.2
+        with:
+          api-key: ${{ secrets.ZULIP_API_KEY }}
+          email: ${{ secrets.ZULIP_EMAIL }}
+          organization-url: ${{ vars.ZULIP_ORGANIZATION_URL }}
+          to: 'Releases'
+          type: 'stream'
+          topic: 'IPython'
+          content: |
+            IPython ${{ github.ref_name }} was just released on PyPI! 🎉
+            https://pypi.org/project/ipython/${{ github.ref_name }}/
+            and what's new: https://ipython.readthedocs.io/en/stable/whatsnew/version9.html

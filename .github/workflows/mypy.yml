@@ -1,0 +1,61 @@
+name: Run MyPy
+
+on:
+  push:
+    branches: [ main, 7.x]
+  pull_request:
+    branches: [ main, 7.x]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.14"]
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: pip
+    - name: Install uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+    - name: Install dependencies
+      shell: bash
+      run: |
+        uv pip install --system mypy pyflakes flake8 '.[all]'
+    - name: Lint with mypy
+      shell: bash
+      run: |
+        set -e
+        mypy IPython
+    - name: Lint with mypy (cross-platform typeshed checks)
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        set -e
+        mypy --platform linux IPython
+        mypy --platform darwin IPython
+        mypy --platform win32 IPython
+    - name: Lint with mypy (win32 typeshed check)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        set -e
+        mypy --platform win32 IPython
+    - name: Lint with pyflakes
+      shell: bash
+      run: |
+        set -e
+        flake8  IPython/core/magics/script.py
+        flake8  IPython/core/magics/packaging.py
